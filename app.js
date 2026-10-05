@@ -39,6 +39,36 @@ csvFile.onchange=async()=>{let rs=parseCSV(await csvFile.files[0].text());if(!rs
 newRecord.onclick=()=>{records.push({});current=records.length-1;renderForm();updatePreview()};duplicateRecord.onclick=()=>{records.push({...records[current]});current=records.length-1;renderForm();updatePreview()};deleteRecord.onclick=()=>{if(records.length===1)records=[{}];else records.splice(current,1);current=Math.min(current,records.length-1);renderForm();updatePreview()};
 recordSelect.onchange=e=>{current=+e.target.value;renderForm();updatePreview()};previewRecord.onchange=e=>{current=+e.target.value;renderForm();updatePreview()};
 includeSelected.onclick=()=>{document.querySelectorAll('#fieldTable tbody tr').forEach((tr,i)=>{if(tr.querySelector('.sel').checked)fields[i].include=true});renderFields();updatePreview()};excludeSelected.onclick=()=>{document.querySelectorAll('#fieldTable tbody tr').forEach((tr,i)=>{if(tr.querySelector('.sel').checked)fields[i].include=false});renderFields();updatePreview()};selectIncluded.onclick=()=>document.querySelectorAll('#fieldTable tbody tr').forEach((tr,i)=>tr.querySelector('.sel').checked=fields[i].include);
-saveTemplate.onclick=()=>download('odonata_label_template.json',JSON.stringify({version:1,fields,borders:borders.checked},null,2));loadTemplate.onclick=()=>templateFile.click();templateFile.onchange=async()=>{try{let t=JSON.parse(await templateFile.files[0].text());fields=t.fields||fields;borders.checked=!!t.borders;ensureFields(allRecordFields());renderFields();updatePreview()}catch(e){msg('Could not load template: '+e.message)}};
+function normalizeTemplate(t){
+  // Native web templates store fields as an array. Desktop Python templates
+  // store fields as an object keyed by Darwin Core field name plus fieldOrder.
+  if(Array.isArray(t.fields)) return t.fields.map(x=>({...cfg(x.name),...x}));
+  if(t.fields && typeof t.fields==='object'){
+    let order=t.fieldOrder||t.order||Object.keys(t.fields);
+    let seen=new Set(), out=[];
+    for(let name of order){
+      if(!t.fields[name]||seen.has(name)) continue;
+      let x=t.fields[name], base=cfg(name);
+      out.push({...base,...x,name,
+        blank:x.blank_lines??x.blank??base.blank,
+        wrap:x.wrap_width??x.wrap??base.wrap,
+        font:x.font_family??x.font??base.font,
+        size:x.font_size??x.size??base.size,
+        spacing:x.word_spacing??x.spacing??base.spacing
+      });
+      seen.add(name);
+    }
+    for(let [name,x] of Object.entries(t.fields)){
+      if(seen.has(name)) continue;
+      let base=cfg(name);
+      out.push({...base,...x,name,blank:x.blank_lines??x.blank??base.blank,wrap:x.wrap_width??x.wrap??base.wrap,font:x.font_family??x.font??base.font,size:x.font_size??x.size??base.size,spacing:x.word_spacing??x.spacing??base.spacing});
+    }
+    return out;
+  }
+  throw new Error('Template has no recognizable fields section.');
+}
+saveTemplate.onclick=()=>download('odonata_label_template.json',JSON.stringify({templateType:'Odonata Label Studio Template',version:2,fieldOrder:fields.map(x=>x.name),fields,borders:borders.checked},null,2));
+loadTemplate.onclick=()=>templateFile.click();
+templateFile.onchange=async()=>{try{let t=JSON.parse(await templateFile.files[0].text());fields=normalizeTemplate(t);borders.checked=!!(t.borders??t.showCuttingBorders);ensureFields(allRecordFields());renderFields();updatePreview();}catch(e){msg('Could not load template: '+e.message)}finally{templateFile.value=''}};
 exportCsv.onclick=()=>{let h=allRecordFields();let text=h.map(csvEscape).join(',')+'\n'+records.map(r=>h.map(k=>csvEscape(r[k]||'')).join(',')).join('\n');download('odonata_occurrences.csv',text,'text/csv')};makePdf.onclick=makePDF;borders.onchange=updatePreview;
 renderForm();renderFields();updatePreview();
