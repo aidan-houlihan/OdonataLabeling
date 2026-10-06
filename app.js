@@ -30,7 +30,69 @@ function orderedItems(r){let arr=[];for(let f of fields){if(!f.include||f.name==
 function logicalLines(r){let a=orderedItems(r),out=[],cur=[];for(let i=0;i<a.length;i++){let x=a[i],next=a[i+1];cur.push(x);let endId=ID.includes(x.name)&&(!next||!ID.includes(next.name));if(endId){out.push({items:cur,blank:1});cur=[]}else if(x.newline){out.push({items:cur,blank:+x.blank||0});cur=[]}}if(cur.length)out.push({items:cur,blank:0});return out}
 function updatePreview(){let r=records[current]||{},box=labelPreview;box.innerHTML='';let lines=logicalLines(r);lines.forEach(line=>{let d=document.createElement('div');d.className='line';line.items.forEach((x,i)=>{let span=document.createElement('span');let fam=x.font==='Times'?'Times New Roman':x.font==='Courier'?'Courier New':'Arial';span.style.fontFamily=fam;span.style.fontWeight=['bold','scientific'].includes(x.format)?'bold':'normal';span.style.fontStyle=['italic','scientific'].includes(x.format)?'italic':'normal';if(x.size)span.style.fontSize=(+x.size/10)+'em';span.style.wordSpacing=((+x.spacing||1)-1)*.28+'em';span.textContent=(x.prefix||'')+x.value+(x.suffix||'')+(i<line.items.length-1?(x.separator||''):'');d.append(span)});box.append(d);for(let j=0;j<line.blank;j++){let b=document.createElement('div');b.className='blank';box.append(b)}});let s=sex(r.sex);if(s){let q=document.createElement('div');q.className='sex';q.textContent=s;box.append(q)}updateRecordNav()}
 function pdfFont(doc,f){let fam=f.font==='Times'?'times':f.font==='Courier'?'courier':'helvetica',style=f.format==='scientific'?'bolditalic':f.format==='bold'?'bold':f.format==='italic'?'italic':'normal';doc.setFont(fam,style)}
-function drawPdfLabel(doc,r,x,y){let left=x+.16, top=y+.18, maxW=4.68, cy=top, base=10;let lines=logicalLines(r);for(let line of lines){let cx=left;let maxPt=base;for(let [i,f] of line.items.entries()){let txt=(f.prefix||'')+f.value+(f.suffix||'')+(i<line.items.length-1?(f.separator||''):'');let size=+f.size||base;maxPt=Math.max(maxPt,size);pdfFont(doc,f);doc.setFontSize(size);let width=(+f.wrap||maxW);let chunks=doc.splitTextToSize(txt,Math.max(.4,Math.min(width,maxW-(cx-left))));for(let j=0;j<chunks.length;j++){if(j){cy+=maxPt/72*1.16;cx=left}doc.text(chunks[j],cx,cy);cx+=doc.getTextWidth(chunks[j])/72}}cy+=maxPt/72*1.16*(1+(+line.blank||0))}let s=sex(r.sex);if(s){doc.setFont('helvetica','normal');doc.setFontSize(15);doc.text(s,x+4.8,y+.28,{align:'right'})}if(borders.checked){doc.setLineWidth(.005);doc.rect(x,y,5,3)}}
+
+// Draw sex symbols as vector graphics. The built-in PDF fonts do not contain
+// Unicode male/female glyphs reliably, which previously produced text such as "&B".
+function drawSexSymbol(doc,s,cx,cy){
+  doc.setDrawColor(0);doc.setLineWidth(.018);
+  const r=.075;
+  doc.circle(cx,cy,r);
+  if(s==='♀'){
+    doc.line(cx,cy+r,cx,cy+r+.15);
+    doc.line(cx-.065,cy+r+.095,cx+.065,cy+r+.095);
+  }else if(s==='♂'){
+    const x1=cx+r*.72,y1=cy-r*.72,x2=cx+r+.13,y2=cy-r-.13;
+    doc.line(x1,y1,x2,y2);
+    doc.line(x2,y2,x2-.095,y2);
+    doc.line(x2,y2,x2,y2+.095);
+  }
+}
+
+function pdfTokenWidth(doc,text,f,size){
+  pdfFont(doc,f);doc.setFontSize(size);
+  if(/^\s+$/.test(text)) return doc.getTextWidth(' ')*text.length*(+f.spacing||1);
+  return doc.getTextWidth(text);
+}
+
+function pdfTokens(line){
+  let out=[];
+  line.items.forEach((f,i)=>{
+    let txt=(f.prefix||'')+f.value+(f.suffix||'')+(i<line.items.length-1?(f.separator||''):'');
+    for(let part of txt.split(/(\s+)/)) if(part) out.push({text:part,f});
+  });
+  return out;
+}
+
+function drawPdfLabel(doc,r,x,y){
+  const left=x+.16, maxW=4.68, base=10, leading=1.16;
+  let cy=y+.28, renderedLines=0;
+  for(let line of logicalLines(r)){
+    let wraps=line.items.map(f=>+f.wrap).filter(v=>v>0);
+    let lineW=Math.min(maxW,wraps.length?Math.min(...wraps):maxW);
+    // Keep the first two rendered lines clear of the upper-right sex symbol.
+    if(renderedLines<2 && sex(r.sex)) lineW=Math.min(lineW,maxW-.42);
+    let cx=left, linePt=base, used=false;
+    for(let t of pdfTokens(line)){
+      let f=t.f,size=+f.size||base;
+      pdfFont(doc,f);doc.setFontSize(size);
+      let w=pdfTokenWidth(doc,t.text,f,size);
+      if(!/^\s+$/.test(t.text) && used && cx-left+w>lineW){
+        cy+=linePt/72*leading;renderedLines++;cx=left;linePt=size;used=false;
+        if(renderedLines<2 && sex(r.sex)) lineW=Math.min(lineW,maxW-.42);
+      }
+      if(/^\s+$/.test(t.text)){
+        if(used) cx+=w;
+      }else{
+        doc.text(t.text,cx,cy);cx+=w;linePt=Math.max(linePt,size);used=true;
+      }
+    }
+    cy+=linePt/72*leading;renderedLines++;
+    if(+line.blank) cy+=(+line.blank)*linePt/72*leading;
+  }
+  let s=sex(r.sex);
+  if(s) drawSexSymbol(doc,s,x+4.72,y+.28);
+  if(borders.checked){doc.setLineWidth(.005);doc.rect(x,y,5,3)}
+}
 function makePDF(){if(!window.jspdf)return msg('PDF library did not load. GitHub Pages needs internet access for the jsPDF CDN.');let {jsPDF}=window.jspdf;/* Landscape Letter fits four 5 x 3 labels directly as a centered contiguous 10 x 6 block. Avoiding PDF transformation matrices fixes blank PDFs in some jsPDF/browser combinations. */let doc=new jsPDF({unit:'in',format:'letter',orientation:'landscape'});let pos=[[.5,1.25],[5.5,1.25],[.5,4.25],[5.5,4.25]];records.forEach((r,i)=>{if(i&&i%4===0)doc.addPage();let [px,py]=pos[i%4];drawPdfLabel(doc,r,px,py)});doc.save('odonata_labels.pdf')}
 function msg(t){message.querySelector('p').textContent=t;message.showModal()}
 function setTab(id){document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.id===id));document.querySelectorAll('nav button').forEach(x=>x.classList.toggle('active',x.dataset.tab===id));if(id==='layout')renderFields();if(id==='preview')updatePreview()}
