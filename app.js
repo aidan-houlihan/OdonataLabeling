@@ -24,36 +24,24 @@ function label(n){return n.replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCa
 function updateRecordNav(){let opts=records.map((r,i)=>`<option value="${i}">${i+1}: ${esc(r.catalogNumber||r.scientificName||'new record')}</option>`).join('');for(let id of ['recordSelect','previewRecord'])document.getElementById(id).innerHTML=opts;recordSelect.value=previewRecord.value=current;recordCount.textContent=`${current+1} of ${records.length}`}
 function renderFields(){let tb=document.querySelector('#fieldTable tbody');tb.innerHTML='';fields.forEach((f,i)=>{let tr=document.createElement('tr');tr.draggable=!ID.includes(f.name);if(ID.includes(f.name))tr.className='fixed';tr.dataset.i=i;tr.innerHTML=`<td class="drag">${ID.includes(f.name)?'🔒':'☰'}</td><td><input class="sel" type="checkbox"><input data-k="include" type="checkbox" ${f.include?'checked':''}></td><td class="fname">${esc(f.name)}</td><td><input data-k="prefix" value="${esc(f.prefix)}"></td><td><input data-k="suffix" value="${esc(f.suffix)}"></td><td><input data-k="separator" value="${esc(f.separator)}"></td><td><input data-k="newline" type="checkbox" ${f.newline?'checked':''}></td><td><input data-k="blank" type="number" min="0" value="${f.blank}"></td><td><input data-k="wrap" type="number" step=".1" min=".5" max="4.7" value="${f.wrap}"></td><td><select data-k="font">${['Helvetica','Times','Courier'].map(x=>`<option ${f.font===x?'selected':''}>${x}</option>`)}</select></td><td><input data-k="size" type="number" step=".5" min="4" max="30" value="${f.size}"></td><td><input data-k="spacing" type="number" step=".1" min=".1" max="5" value="${f.spacing}"></td><td><select data-k="format">${['normal','bold','italic','scientific','date'].map(x=>`<option ${f.format===x?'selected':''}>${x}</option>`)}</select></td>`;tb.append(tr);tr.querySelectorAll('[data-k]').forEach(el=>el.oninput=()=>{let k=el.dataset.k;f[k]=el.type==='checkbox'?el.checked:(['blank','spacing'].includes(k)?+el.value:el.value);if(f.name==='habitat')f.prefix='';if(['stateProvince','country'].includes(f.name))f.format='bold';updatePreview()});tr.ondragstart=e=>e.dataTransfer.setData('text/plain',i);tr.ondragover=e=>e.preventDefault();tr.ondrop=e=>{e.preventDefault();let from=+e.dataTransfer.getData('text/plain'),to=i;if(ID.includes(fields[from].name)||ID.includes(fields[to].name))return;let [x]=fields.splice(from,1);fields.splice(to,0,x);renderFields();updatePreview()}})}
 function fmtDate(v){if(!/^\d{4}-\d\d-\d\d/.test(v||''))return v||'';let d=new Date(v+'T00:00:00');return `${d.getDate()} ${d.toLocaleString('en',{month:'short'})} ${d.getFullYear()}`}
-function sex(v){v=(v||'').toLowerCase();return v.includes('female')||v==='f'||v.includes('♀')?'♀':v.includes('male')||v==='m'||v.includes('♂')?'♂':''}
+function sex(v){v=(v||'').trim().toLowerCase();return v.includes('female')||v==='f'||v.includes('♀')?'Female':v.includes('male')||v==='m'||v.includes('♂')?'Male':''}
 function value(name,r,f){if(name==='country'&&!r.country&&isUSState(r.stateProvince))return 'USA';let v=r[name]||'';return f.format==='date'?fmtDate(v):v}
 function orderedItems(r){let arr=[];for(let f of fields){if(!f.include||f.name==='sex')continue;let v=value(f.name,r,f);if(!v)continue;arr.push({...f,value:v,prefix:f.name==='habitat'?'':f.prefix,format:['stateProvince','country'].includes(f.name)?'bold':f.format})}let ids=arr.filter(x=>ID.includes(x.name)).sort((a,b)=>ID.indexOf(a.name)-ID.indexOf(b.name));return [...ids,...arr.filter(x=>!ID.includes(x.name))]}
 function logicalLines(r){let a=orderedItems(r),out=[],cur=[];for(let i=0;i<a.length;i++){let x=a[i],next=a[i+1];cur.push(x);let endId=ID.includes(x.name)&&(!next||!ID.includes(next.name));if(endId){out.push({items:cur,blank:1});cur=[]}else if(x.newline){out.push({items:cur,blank:+x.blank||0});cur=[]}}if(cur.length)out.push({items:cur,blank:0});return out}
-function updatePreview(){let r=records[current]||{},box=labelPreview;box.innerHTML='';let lines=logicalLines(r);lines.forEach(line=>{let d=document.createElement('div');d.className='line';line.items.forEach((x,i)=>{let span=document.createElement('span');let fam=x.font==='Times'?'Times New Roman':x.font==='Courier'?'Courier New':'Arial';span.style.fontFamily=fam;span.style.fontWeight=['bold','scientific'].includes(x.format)?'bold':'normal';span.style.fontStyle=['italic','scientific'].includes(x.format)?'italic':'normal';if(x.size)span.style.fontSize=(+x.size/10)+'em';span.style.wordSpacing=((+x.spacing||1)-1)*.28+'em';span.textContent=(x.prefix||'')+x.value+(x.suffix||'')+(i<line.items.length-1?(x.separator||''):'');d.append(span)});box.append(d);for(let j=0;j<line.blank;j++){let b=document.createElement('div');b.className='blank';box.append(b)}});let s=sex(r.sex);if(s){let q=document.createElement('div');q.className='sex';q.textContent=s;box.append(q)}updateRecordNav()}
+function updatePreview(){let r=records[current]||{},box=labelPreview;box.innerHTML='';let m=labelMargins();box.style.padding=`${m.top/3*100}% ${m.right/5*100}% ${m.bottom/3*100}% ${m.left/5*100}%`;let lines=logicalLines(r);lines.forEach(line=>{let d=document.createElement('div');d.className='line';line.items.forEach((x,i)=>{let span=document.createElement('span');let fam=x.font==='Times'?'Times New Roman':x.font==='Courier'?'Courier New':'Arial';span.style.fontFamily=fam;span.style.fontWeight=['bold','scientific'].includes(x.format)?'bold':'normal';span.style.fontStyle=['italic','scientific'].includes(x.format)?'italic':'normal';if(x.size)span.style.fontSize=(+x.size/10)+'em';span.style.wordSpacing=((+x.spacing||1)-1)*.28+'em';span.textContent=(x.prefix||'')+x.value+(x.suffix||'')+(i<line.items.length-1?(x.separator||''):'');d.append(span)});box.append(d);for(let j=0;j<line.blank;j++){let b=document.createElement('div');b.className='blank';box.append(b)}});let s=sex(r.sex);if(s){let q=document.createElement('div');q.className='sex';q.style.right=(m.right/5*100)+'%';q.style.top=(m.top/3*100)+'%';q.textContent=s;box.append(q)}updateRecordNav()}
 function pdfFont(doc,f){let fam=f.font==='Times'?'times':f.font==='Courier'?'courier':'helvetica',style=f.format==='scientific'?'bolditalic':f.format==='bold'?'bold':f.format==='italic'?'italic':'normal';doc.setFont(fam,style)}
 
-// Draw sex symbols as vector graphics. The built-in PDF fonts do not contain
-// Unicode male/female glyphs reliably, which previously produced text such as "&B".
-function drawSexSymbol(doc,s,cx,cy){
-  doc.setDrawColor(0);doc.setLineWidth(.018);
-  const r=.075;
-  doc.circle(cx,cy,r);
-  if(s==='♀'){
-    doc.line(cx,cy+r,cx,cy+r+.15);
-    doc.line(cx-.065,cy+r+.095,cx+.065,cy+r+.095);
-  }else if(s==='♂'){
-    const x1=cx+r*.72,y1=cy-r*.72,x2=cx+r+.13,y2=cy-r-.13;
-    doc.line(x1,y1,x2,y2);
-    doc.line(x2,y2,x2-.095,y2);
-    doc.line(x2,y2,x2,y2+.095);
-  }
-}
-
+function labelMargins(){return {left:+marginLeft.value||0,right:+marginRight.value||0,top:+marginTop.value||0,bottom:+marginBottom.value||0}}
 function pdfTokenWidth(doc,text,f,size){
-  pdfFont(doc,f);doc.setFontSize(size);
-  if(/^\s+$/.test(text)) return doc.getTextWidth(' ')*text.length*(+f.spacing||1);
-  return doc.getTextWidth(text);
+  // Calculate width explicitly in INCHES. jsPDF getTextWidth() has behaved
+  // inconsistently with unit:'in' across builds, which caused same-line fields
+  // to advance by almost zero and print on top of each other.
+  pdfFont(doc,f); doc.setFontSize(size);
+  const unitWidth=doc.getStringUnitWidth(text);
+  let width=unitWidth*size/72;
+  if(/^\s+$/.test(text)) width*= (+f.spacing||1);
+  return width;
 }
-
 function pdfTokens(line){
   let out=[];
   line.items.forEach((f,i)=>{
@@ -64,13 +52,13 @@ function pdfTokens(line){
 }
 
 function drawPdfLabel(doc,r,x,y){
-  const left=x+.16, maxW=4.68, base=10, leading=1.16;
-  let cy=y+.28, renderedLines=0;
+  const m=labelMargins(), left=x+m.left, maxW=Math.max(.5,5-m.left-m.right), base=10, leading=1.16;
+  let cy=y+m.top+.12, renderedLines=0;
   for(let line of logicalLines(r)){
     let wraps=line.items.map(f=>+f.wrap).filter(v=>v>0);
     let lineW=Math.min(maxW,wraps.length?Math.min(...wraps):maxW);
     // Keep the first two rendered lines clear of the upper-right sex symbol.
-    if(renderedLines<2 && sex(r.sex)) lineW=Math.min(lineW,maxW-.42);
+    if(renderedLines<2 && sex(r.sex)) lineW=Math.min(lineW,maxW-.70);
     let cx=left, linePt=base, used=false;
     for(let t of pdfTokens(line)){
       let f=t.f,size=+f.size||base;
@@ -78,7 +66,7 @@ function drawPdfLabel(doc,r,x,y){
       let w=pdfTokenWidth(doc,t.text,f,size);
       if(!/^\s+$/.test(t.text) && used && cx-left+w>lineW){
         cy+=linePt/72*leading;renderedLines++;cx=left;linePt=size;used=false;
-        if(renderedLines<2 && sex(r.sex)) lineW=Math.min(lineW,maxW-.42);
+        if(renderedLines<2 && sex(r.sex)) lineW=Math.min(lineW,maxW-.70);
       }
       if(/^\s+$/.test(t.text)){
         if(used) cx+=w;
@@ -90,7 +78,7 @@ function drawPdfLabel(doc,r,x,y){
     if(+line.blank) cy+=(+line.blank)*linePt/72*leading;
   }
   let s=sex(r.sex);
-  if(s) drawSexSymbol(doc,s,x+4.72,y+.28);
+  if(s){doc.setFont('helvetica','normal');doc.setFontSize(11);doc.text(s,x+5-m.right,y+m.top+.12,{align:'right'});}
   if(borders.checked){doc.setLineWidth(.005);doc.rect(x,y,5,3)}
 }
 function makePDF(){if(!window.jspdf)return msg('PDF library did not load. GitHub Pages needs internet access for the jsPDF CDN.');let {jsPDF}=window.jspdf;/* Landscape Letter fits four 5 x 3 labels directly as a centered contiguous 10 x 6 block. Avoiding PDF transformation matrices fixes blank PDFs in some jsPDF/browser combinations. */let doc=new jsPDF({unit:'in',format:'letter',orientation:'landscape'});let pos=[[.5,1.25],[5.5,1.25],[.5,4.25],[5.5,4.25]];records.forEach((r,i)=>{if(i&&i%4===0)doc.addPage();let [px,py]=pos[i%4];drawPdfLabel(doc,r,px,py)});doc.save('odonata_labels.pdf')}
@@ -130,8 +118,8 @@ function normalizeTemplate(t){
   }
   throw new Error('Template has no recognizable fields section.');
 }
-saveTemplate.onclick=()=>download('odonata_label_template.json',JSON.stringify({templateType:'Odonata Label Studio Template',version:2,fieldOrder:fields.map(x=>x.name),fields,borders:borders.checked},null,2));
+saveTemplate.onclick=()=>download('odonata_label_template.json',JSON.stringify({templateType:'Odonata Label Studio Template',version:3,fieldOrder:fields.map(x=>x.name),fields,borders:borders.checked,margins:labelMargins()},null,2));
 loadTemplate.onclick=()=>templateFile.click();
-templateFile.onchange=async()=>{try{let t=JSON.parse(await templateFile.files[0].text());fields=normalizeTemplate(t);borders.checked=!!(t.borders??t.showCuttingBorders);ensureFields(allRecordFields());renderFields();updatePreview();}catch(e){msg('Could not load template: '+e.message)}finally{templateFile.value=''}};
-exportCsv.onclick=()=>{let h=allRecordFields();let text=h.map(csvEscape).join(',')+'\n'+records.map(r=>h.map(k=>csvEscape(r[k]||'')).join(',')).join('\n');download('odonata_occurrences.csv',text,'text/csv')};makePdf.onclick=makePDF;borders.onchange=updatePreview;
+templateFile.onchange=async()=>{try{let t=JSON.parse(await templateFile.files[0].text());fields=normalizeTemplate(t);borders.checked=!!(t.borders??t.showCuttingBorders);let m=t.margins||{};marginLeft.value=m.left??.16;marginRight.value=m.right??.16;marginTop.value=m.top??.15;marginBottom.value=m.bottom??.13;ensureFields(allRecordFields());renderFields();updatePreview();}catch(e){msg('Could not load template: '+e.message)}finally{templateFile.value=''}};
+exportCsv.onclick=()=>{let h=allRecordFields();let text=h.map(csvEscape).join(',')+'\n'+records.map(r=>h.map(k=>csvEscape(r[k]||'')).join(',')).join('\n');download('odonata_occurrences.csv',text,'text/csv')};makePdf.onclick=makePDF;borders.onchange=updatePreview;[marginLeft,marginRight,marginTop,marginBottom].forEach(x=>x.oninput=updatePreview);
 renderForm();renderFields();updatePreview();
